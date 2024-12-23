@@ -1,0 +1,59 @@
+[build-system]
+requires = ["flit_core >=3.9.0,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "blastforge"
+description = "Deep RL for explosive device design."
+version = "0.0.0"
+authors = [
+    {name = "Hickmann, Kyle", email = "hickmank@lanl.gov"},
+]
+# NOTE: The PyTorch package through `conda` is `pytorch`, through
+# `pip` (and therefore `flit`) it is `torch`. Since `yoke` primarily
+# is used through `conda` environments we'll handle the PyTorch
+# dependencies separately.
+dependencies = [
+    "pytest-cov",
+    "scikit-image",
+    "matplotlib",
+    "h5py",
+    "pandas",
+    "pytest",
+    "ruff",
+    "einops",
+    ]
+requires-python = ">=3.9"
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+classifiers = ["Private :: Do Not Upload",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Source = "https://gitlab.lanl.gov/eada/blastforge"
+
+[tool.ruff]
+line-length = 89
+indent-width = 4
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = 89
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "D",
+    "UP",
+    "W",
+    "ANN"]
+
+ignore = ["ANN101"]  # Wants a `type` defined for `self` argument!
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
