@@ -14,6 +14,11 @@ authors = [
 # is used through `conda` environments we'll handle the PyTorch
 # dependencies separately.
 dependencies = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torchrl",
+    "gymnasium",
     "pytest-cov",
     "scikit-image",
     "matplotlib",
