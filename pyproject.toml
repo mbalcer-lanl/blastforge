@@ -10,9 +10,9 @@ authors = [
     {name = "Hickmann, Kyle", email = "hickmank@lanl.gov"},
 ]
 # NOTE: The PyTorch package through `conda` is `pytorch`, through
-# `pip` (and therefore `flit`) it is `torch`. Since `yoke` primarily
-# is used through `conda` environments we'll handle the PyTorch
-# dependencies separately.
+# `pip` (and therefore `flit`) it is `torch`. Since `blastforge`
+# primarily is used through `conda` environments we'll handle the
+# PyTorch dependencies separately.
 dependencies = [
     "torch",
     "torchvision",
