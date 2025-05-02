@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "blastforge"
-description = "Deep RL for explosive device design."
+description = "Deep Agent and RL for explosive device design."
 version = "0.0.0"
 authors = [
     {name = "Hickmann, Kyle", email = "hickmank@lanl.gov"},
@@ -20,6 +20,7 @@ dependencies = [
     "torchrl",
     "gymnasium",
     "pytest-cov",
+    "coveralls",
     "scikit-image",
     "matplotlib",
     "h5py",
@@ -27,6 +28,10 @@ dependencies = [
     "pytest",
     "ruff",
     "einops",
+    "lightning",
+    "sphinx",
+    "coverage",
+    "furo"
     ]
 requires-python = ">=3.9"
 readme = "README.md"
@@ -37,7 +42,7 @@ classifiers = ["Private :: Do Not Upload",
 ]
 
 [project.urls]
-Source = "https://gitlab.lanl.gov/eada/blastforge"
+Source = "https://github.com/lanl/blastforge"
 
 [tool.ruff]
 line-length = 89

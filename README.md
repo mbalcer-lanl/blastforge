@@ -1,5 +1,5 @@
-Blast Forge: Deep RL-based Explosive Design
-===========================================
+Blast Forge: Deep Agentic and RL-based Explosive Design
+=======================================================
 
 ![Blow it up!](./blastforge_logo.png)
 
@@ -25,40 +25,8 @@ Setup your base environment and activate it (we use conda):
 ```
 >> conda create -n <blastforge_env_name> python=3.9 flit
 >> conda activate <blastforge_env_name>
-```
-
-> **WARNING!!**
->
-> For some environments `flit`, the install manager for `BlastForge` will not
-> default to installing in the conda environment. To remedy this first
-> checkout your `USER_BASE` and `USER_SITE` variables using
->
-> ```
-> >> python -m site
-> ```
->
-> If `USER_BASE` and `USER_SITE` don't appear to be associated with
-> `<blastforge_env_name>` then set the `PYTHONUSERBASE` environment variable
-> prior to installing `BlastForge`:
->
-> ```
-> >> export PYTHONUSERBASE=$CONDA_PREFIX
-> ```
->
-> Rerun `python -m site` to ensure `USER_BASE` and `USER_SITE` have
-> changed.
-
-For **developers**, you can install a **development version** of
-`BlastForge` checkout using...
-
-```
->> flit install --user --symlink --deps=all
-```
-
-For **non-developers**, you can install `BlastForge` using...
-
-```
->> flit install --deps=all
+>> cd <yoke_repo_clone_directory>
+>> flit install
 ```
 
 > **WARNING**
