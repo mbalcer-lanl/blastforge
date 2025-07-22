@@ -19,8 +19,8 @@ reward_model_filename = "reward_network"  # name of saved reward network
 os.makedirs(reward_model_dir, exist_ok=True)
 
 # Parameters
-n_episodes = 10  # how many rollouts to collect
-max_steps = 100  # max steps per episode
+n_episodes = 100  # how many rollouts to collect
+max_steps = 1000  # max steps per episode
 
 # 1. Create the environment
 env = gym.make("InvertedDoublePendulum-v4")
