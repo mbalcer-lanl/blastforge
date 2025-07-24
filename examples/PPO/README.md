@@ -43,5 +43,5 @@ This trains the reward network and saves it in `reward_model_dir` with the file 
 Train the policy network following the PPO algorithm by running:
 
 ```bash
-python run.py
+python main.py
 ```
