@@ -32,7 +32,7 @@ from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 from tqdm import tqdm
 from typing import Callable
-from models import RewardPredictor
+from models import EnvironmentPredictor, ValuePredictor
 
 # TorchRL prefers spawn method, that restricts creation of
 # ``~torchrl.envs.ParallelEnv`` inside
@@ -175,26 +175,24 @@ base_env = GymEnv("InvertedDoublePendulum-v4", device=device)
 
 
 ######################################################################
-# Load reward pre-trained network
+# Load EnvironmentPredictor pre-trained network
 
 
-# load trained reward network
-reward_model = RewardPredictor(
-    state_dim=11,  # states.shape[1],
+# load trained Enviroment network
+env_model = EnvironmentPredictor(
+    obs_dim=11,  # states.shape[1],
     action_dim=1,  # actions.shape[1],
-    hidden_sizes=[64, 64],
-)
+    hidden_dims=(128, 128),
+).to(device)
 
 # Load the saved parameters from train_reward_model.py
-reward_model_dir = "./trained_models/"  # path to save reward model
-reward_model_filename = "reward_network"  # name of saved reward network
-load_reward_model_path = os.path.join(
-    *[reward_model_dir, reward_model_filename + ".pth"]
-)
-reward_model.load_state_dict(torch.load(load_reward_model_path))
+env_model_dir = "./trained_models/"  # path to save reward model
+env_model_filename = "env_network"  # name of saved reward network
+load_env_model_path = os.path.join(*[env_model_dir, env_model_filename + ".pth"])
+env_model.load_state_dict(torch.load(load_env_model_path))
 
 # If you’ll be doing inference, switch to eval mode:
-reward_model.eval()
+env_model.eval()
 
 
 ######################################################################
@@ -260,8 +258,8 @@ reward_model.eval()
 #
 
 
-class RewardPredictorTransform(Transform):
-    """Reward network.
+class EnvironmentPredictorTransform(Transform):
+    """Environment network.
 
     A Transform that applies a learned reward model to (observation, action) pairs
     stored in a TensorDict.
@@ -316,7 +314,7 @@ class RewardPredictorTransform(Transform):
         return td
 
 
-class NNRewardWrapper(gym.Wrapper):
+class NNEnvironmentWrapper(gym.Wrapper):
     """Environment wrapper.
 
     Environment wrapper that replaces the environment's reward with predictions
@@ -343,7 +341,7 @@ class NNRewardWrapper(gym.Wrapper):
         reward_model: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
         device: torch.device,
     ) -> None:
-        """Initialize the NNRewardWrapper.
+        """Initialize the NNEnvironmentWrapper.
 
         Stores the environment, reward model, and device for inference.
 
@@ -353,7 +351,7 @@ class NNRewardWrapper(gym.Wrapper):
             device (torch.device): Device on which to run the reward model.
         """
         super().__init__(env)
-        self.reward_model = reward_model
+        self.env_model = env_model
         self.device = device
 
     def step(self, action: gym.Space) -> tuple:
@@ -386,19 +384,20 @@ class NNRewardWrapper(gym.Wrapper):
         obs, _orig_r, terminated, truncated, info = self.env.step(action)
 
         # 2) Prepare tensors for the model: add batch dimension and move to device
-        obs_t = torch.from_numpy(obs).float().to(self.device).unsqueeze(0)
-        act_t = torch.from_numpy(action).float().to(self.device).unsqueeze(0)
+        obs_t = torch.from_numpy(obs).float().to(self.device)  # .unsqueeze(0)
+        act_t = torch.from_numpy(action).float().to(self.device)  # .unsqueeze(0)
 
         # 3) Compute the reward with the pretrained model (no gradient tracking)
         with torch.no_grad():
-            nn_r = self.reward_model(obs_t, act_t).item()
+            nn_o, nn_r = self.env_model(obs_t, act_t)  # .item()
 
-        # 4) Return everything in the original Gym step format, substituting the reward
-        return obs, nn_r, terminated, truncated, info
+        # 4) Return everything in the original Gym step format, substituting
+        # the observation and reward
+        return nn_o, nn_r, terminated, truncated, info
 
 
 gym_env = gym.make("InvertedDoublePendulum-v4")
-nn_wrapped = NNRewardWrapper(gym_env, reward_model, device)
+nn_wrapped = NNEnvironmentWrapper(gym_env, env_model, device)
 base_env = GymWrapper(env=nn_wrapped, device=device)
 
 # Build and wrap
@@ -406,7 +405,7 @@ all_transforms = Compose(
     ObservationNorm(in_keys=["observation"]),
     DoubleToFloat(),
     StepCounter(),
-    RewardPredictorTransform(reward_model),  # <- injects reward network
+    EnvironmentPredictorTransform(env_model),  # <- injects environment network
 )
 
 # Wrap everything in a TorchRL TransformedEnv
@@ -533,15 +532,34 @@ policy_module = ProbabilisticActor(
 # structure as the policy, but for simplicity we assign it its own set of
 # parameters.
 #
-value_net = nn.Sequential(
-    nn.LazyLinear(num_cells, device=device),
-    nn.Tanh(),
-    nn.LazyLinear(num_cells, device=device),
-    nn.Tanh(),
-    nn.LazyLinear(num_cells, device=device),
-    nn.Tanh(),
-    nn.LazyLinear(1, device=device),
-)
+# value_net = nn.Sequential(
+# nn.LazyLinear(num_cells, device=device),
+# nn.Tanh(),
+# nn.LazyLinear(num_cells, device=device),
+# nn.Tanh(),
+# nn.LazyLinear(num_cells, device=device),
+# nn.Tanh(),
+# nn.LazyLinear(1, device=device),
+# )
+
+obs_dim = 11
+action_dim = 1
+
+value_net = ValuePredictor(
+    state_dim=obs_dim,
+    hidden_dim=256,
+).to(device)
+
+
+# (Optional) dummy forward to check shapes / initialize any lazy components
+dummy_s = torch.zeros(1, obs_dim, device=device)
+dummy_a = torch.zeros(1, action_dim, device=device)
+_ = value_net(dummy_s)  # , dummy_a
+
+# load pre-trained weights of the value network
+ckpt = torch.load("./trained_models/pretrained_value_net.pth", map_location=device)
+value_net.load_state_dict(ckpt)
+
 
 value_module = ValueOperator(
     module=value_net,
@@ -642,7 +660,8 @@ replay_buffer = ReplayBuffer(
 # To compute the advantage, one just needs to (1) build the advantage module, which
 # utilizes our value operator, and (2) pass each batch of data through it before each
 # epoch.
-# The GAE module will update the input ``tensordict`` with new ``"advantage"`` and
+# The Generalized Advantage Estimate (GAE) module will update the input ``tensordict``
+# with new ``"advantage"`` and
 # ``"value_target"`` entries.
 # The ``"value_target"`` is a gradient-free tensor that represents the empirical
 # value that the value network should represent with the input observation.
