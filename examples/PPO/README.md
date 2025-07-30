@@ -16,7 +16,9 @@ This example is based on the TorchRL PPO tutorial (https://docs.pytorch.org/tuto
 
 ## Overview
 
-This example trains a Reinforcement Learning (RL) model using the Proximal Policy Optimization (PPO) algorithm. A reward network is pretrained to learn the reward from the environment and used when training the policy network in the PPO algorithm.
+This example trains a Reinforcement Learning (RL) model using the Proximal Policy Optimization (PPO) algorithm. 
+A surrogate model is trained
+A value network is pretrained to learn the value from the environment and used to initialize the weights of the value network in the PPO algorithm.
 
 ---
 
@@ -32,15 +34,25 @@ pip install gymnasium[mujoco]
 
 ## Usage
 
-Pretrain the reward model first by:
+1. Train the surrogate model that emulates the environment:
 
 ```bash
-python train_reward_model.py
+python train_env_surrogate.py
 ```
 
-This trains the reward network and saves it in `reward_model_dir` with the file name `reward_model_filename`.
+This trains the reward network and saves it in `env_model_dir` with the file name `env_model_filename`.
 
-Train the policy network following the PPO algorithm by running:
+
+2. Pretrain the value model first by:
+
+```bash
+python train_value_model.py
+```
+
+This trains the reward network and saves it in `value_model_dir` with the file name `value_model_filename`.
+
+
+3. Train the policy network following the PPO algorithm by running:
 
 ```bash
 python main.py
