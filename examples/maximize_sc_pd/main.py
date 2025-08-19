@@ -459,7 +459,7 @@ if __name__ == "__main__":
 
         return sim_fn
 
-    sim_fn = make_sim_fn_from_ckpt("./train_emulator/surrogate_out/surrogate.pt", device="cpu")
+    sim_fn = make_sim_fn_from_ckpt("./surrogate.pt", device="cpu")
     
     run_train = True
     if run_train:
