@@ -2,13 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-cd /mnt/c/Users/349957/Documents/1Research/lanl/blastforge/sc_3layer
-conda activate bf_fork
-python main.py
-
 Train a PPO policy (TorchRL) on a custom Gymnasium env that calls a
-user-provided simulation function with 10 inputs and returns a single scalar.
-The immediate reward equals that scalar.
+user-provided neural network.
+The immediate reward is the -MSE(target, emulator output density field).
 
 Requirements (tested with TorchRL 0.9+):
     pip install "torch>=2.3" "torchrl>=0.9" gymnasium numpy tqdm
