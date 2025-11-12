@@ -20,6 +20,8 @@ The user supplies a "target" shape of a copper jet at $$t=25$$ $$\mu\text{s}$$. 
 
 Installation of Blastforge.
 
+The .hdf5 file for the PLI NN emulator is too large to upload to github. So, obtain the "study012_modelState_epoch0100.hdf5" file from eith me (mbalcer@lanl.gov) or Smyther (smyther@lanl.gov). TODO: convert this emulator to ONNX format (or another format), to see if it is small enough to upload.
+
 ---
 
 ## Usage
