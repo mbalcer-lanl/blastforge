@@ -1,23 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-cd /mnt/c/Users/349957/Documents/1Research/lanl/blastforge/sc_3layer
-conda activate bf_fork
+run in blasforge environment with:
 python main.py
 
 Train a PPO policy (TorchRL) on a custom Gymnasium env that calls a
-user-provided simulation function with 10 inputs and returns a single scalar.
-The immediate reward equals that scalar.
-
-Requirements (tested with TorchRL 0.9+):
-    pip install "torch>=2.3" "torchrl>=0.9" gymnasium numpy tqdm
-
-If you use CUDA:
-    pip install "torch==<matching CUDA build>"
-
-References:
-- TorchRL PPO tutorial & API (Collector, GAE, ClipPPOLoss, ProbabilisticActor).
+user-provided emulator of a PLI density field of copper at t=25\mu s 
+with 28 inputs and returns a single scalar.
+The immediate reward is the Mean Squared Error (MSE) of the density field 
+between the target and emulator output.
 """
 
 from __future__ import annotations
@@ -57,8 +46,10 @@ from models import tCNNsurrogate, hybrid2vectorCNN
 from utils import mse_2d, load_model_and_optimizer_hdf5
 
 import matplotlib.pyplot as plt
+import os
+
 # -----------------------------------------------
-# 2) Custom Gymnasium Env wrapping the simulation
+# Custom Gymnasium Env wrapping the emulator
 # -----------------------------------------------
 
 class SimEnv(gym.Env):
@@ -229,7 +220,7 @@ class SimEnv(gym.Env):
 
 
 # ----------------------------
-# 3) PPO Training configuration
+# Configuration of user inputs
 # ----------------------------
 
 @dataclass
@@ -265,10 +256,14 @@ class PPOConfig:
     
     # Target
     target: float = 1.0
+    
+    # Model file paths
+    emulator_filepath: str = "./data/emulator/study012_modelState_epoch0100.hdf5"
+    value_pretrain_filepath: str = './data/value/reward_regular_run_opt_fix_lr5e-4/runs/study_001/study001_modelState_epoch0100.pth'
 
 
 # ----------------------------
-# 4) Build policy / value nets
+# Build policy / value NN
 # ----------------------------
 
 def build_actor_critic(env: TransformedEnv, cfg: PPOConfig):
@@ -418,11 +413,10 @@ def build_actor_critic(env: TransformedEnv, cfg: PPOConfig):
     disable_bn_running_stats_(value_net)  # your hybrid2vectorCNN has BN in its CNN blocks
     
     
-    value_pretrain_filepath = './data/value/reward_regular_run_opt_fix_lr5e-4/runs/study_001/study001_modelState_epoch0100.pth'
-    state = torch.load(value_pretrain_filepath, map_location=device, weights_only=False)
+    state = torch.load(cfg.value_pretrain_filepath, map_location=device, weights_only=False)
     from torch.serialization import safe_globals
     # with safe_globals([torch.nn.modules.activation.GELU]):
-    #     state = torch.load(value_pretrain_filepath, map_location=device, weights_only=False)
+    #     state = torch.load(cfg.value_pretrain_filepath, map_location=device, weights_only=False)
     
     # (Optional) unwrap common checkpoint formats
     if isinstance(state, dict) and "state_dict" in state:
@@ -449,7 +443,7 @@ def build_actor_critic(env: TransformedEnv, cfg: PPOConfig):
 
 
 # ----------------------------
-# 5) Make TorchRL environment
+# Make TorchRL environment
 # ----------------------------
 
 def make_env(sim_fn: Callable[[np.ndarray], float], cfg: PPOConfig) -> TransformedEnv:
@@ -475,7 +469,7 @@ def make_env(sim_fn: Callable[[np.ndarray], float], cfg: PPOConfig) -> Transform
 
 
 # ----------------------------
-# 6) Training loop (PPO)
+# Training loop (PPO)
 # ----------------------------
 
 def train(sim_fn: Callable[[np.ndarray], float], cfg: PPOConfig):
@@ -687,16 +681,28 @@ def train(sim_fn: Callable[[np.ndarray], float], cfg: PPOConfig):
     return logs
 
 # ----------------------------
-# 7) Run
+# Run
 # ----------------------------
 
 if __name__ == "__main__":
     
+    # Flag to run the training loop of the policy network
     run_train = True
     
+    # get default command line arguments
     cfg = PPOConfig()
     
-    rv_lb = np.array([
+    # filepaths to models
+    cfg.emulator_filepath = "./data/emulator/study012_modelState_epoch0100.hdf5"
+    cfg.value_pretrain_filepath = './data/value/reward_regular_run_opt_fix_lr5e-4/runs/study_001/study001_modelState_epoch0100.pth'
+    
+    # create figures directory if it does not exist
+    os.makedirs('./figures/', exist_ok=True)
+    
+    
+    # define bounds of geometric parameters
+    # lower bounds
+    cfg.action_low = np.array([
        #4.5-2, # liner position
        #5.0-2,
        #5.5-2,
@@ -729,8 +735,8 @@ if __name__ == "__main__":
        0.05,
        # 25.0, # radius of shell
        ])
-    
-    rv_ub = np.array([
+    # upper bounds
+    cfg.action_high = np.array([
        #4.5+2, # liner position
        #5.0+2,
        #5.5+2,
@@ -766,24 +772,21 @@ if __name__ == "__main__":
     # define target
     # cfg.target = np.load('./data/target/target1.npy')
     cfg.target = np.zeros((1120, 800))
-    #cfg.target[500:700, 0:20] = 8.9
-    #cfg.target[500:700, 780:-1] = 8.9
-    
     cfg.target[500:700, 399-20:399+20] = 8.93
     
-    fig, ax = plt.subplots()
-    im = ax.imshow(cfg.target, origin="lower", vmin=0.0, vmax=9.0)  # default colormap
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label("Density")
-    plt.savefig('./figures/target.png', dpi=150, transparent=True)
-    plt.show()
+    # plot target if requested
+    plt_target = True
+    if plt_target:
+        fig, ax = plt.subplots()
+        im = ax.imshow(cfg.target, origin="lower", vmin=0.0, vmax=9.0)  # default colormap
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("Density")
+        plt.savefig('./figures/target.png', dpi=150, transparent=True)
+        plt.show()
     
-    cfg.nvar = len(rv_lb)
+    cfg.nvar = len(cfg.action_low)
     
-    # bounds
-    cfg.action_low = rv_lb
-    cfg.action_high = rv_ub
-    
+    # PPO arguments
     cfg.device = "cpu"
     cfg.seed = 42
     cfg.gamma = 0.99
@@ -842,9 +845,9 @@ if __name__ == "__main__":
             weight_decay=0.01,
         )
         
-        filepath = "./data/emulator/study012_modelState_epoch0100.hdf5"
+        # filepath = "./data/emulator/study012_modelState_epoch0100.hdf5"
         
-        epoch = load_model_and_optimizer_hdf5(model,optimizer,filepath)
+        epoch = load_model_and_optimizer_hdf5(model,optimizer,cfg.emulator_filepath)
         
         return model, device
 
@@ -905,9 +908,10 @@ if __name__ == "__main__":
 
         return sim_fn
     
-    sim_fn = make_sim_fn_from_ckpt("./data/emulator/study012_modelState_epoch0100.hdf5", device="cpu")
+    sim_fn = make_sim_fn_from_ckpt(cfg.emulator_filepath, device="cpu")
     
     
+    # run training loop (PPO)
     if run_train:
         logs = train(sim_fn, cfg)
         
@@ -916,19 +920,19 @@ if __name__ == "__main__":
         with np.load("training_logs.npz") as f:
             logs = {k: f[k] for k in f.files}
     
-    import torch
-    from torchrl.envs.utils import ExplorationType, set_exploration_type
-
-    # 1) Rebuild env and actor exactly as in training
+    
+    ## Post-process
+    
+    # Rebuild env and actor exactly as in training
     env = make_env(sim_fn, cfg)                       # your factory
     actor, _ = build_actor_critic(env, cfg)
 
-    # 2) Load weights
+    # Load weights
     state = torch.load(cfg.save_path, map_location=cfg.device)
     actor.load_state_dict(state)
     actor.to(cfg.device).eval()
 
-    # 3) Deterministic single-step rollout (works for bandit: max_steps=1)
+    # Deterministic single-step rollout (works for bandit: max_steps=1)
     with torch.no_grad(), set_exploration_type(ExplorationType.DETERMINISTIC):
         td = env.rollout(
             policy=actor,
@@ -947,20 +951,19 @@ if __name__ == "__main__":
     print("Deterministic action:", a_star)
     
     
-    # def eval_env(a_star):
-    # 1) Reset and set the action
+    # Reset and set the action
     td = env.reset().to(cfg.device)
     a = torch.as_tensor(a_star, dtype=torch.float32, device=cfg.device).unsqueeze(0)  # (1, A)
     td.set("action", a)
 
-    # 2) Step once (bandit: one step is enough)
+    # Step once (bandit: one step is enough)
     td_next = env.step(td)
 
-    # 3) Pull the image out of the tensordict
-    # If your observation is a Dict with keys y/h1/h2 (as we wired earlier):
+    # Pull the image out of the tensordict
+    # if observation is a Dict with keys y/h1/h2:
     if ("next", "h1") in td_next.keys(True):
         img_t = td_next.get(("next", "h1"))[0]       # torch, shape (C,H,W)
-    # If your observation is a single Box image:
+    # if observation is a single Box image:
     else:
         img_t = td_next.get(("next", "observation"))[0]  # torch, shape (C,H,W)
 
@@ -969,28 +972,21 @@ if __name__ == "__main__":
     if ("next","_extra","sim_output") in td_next.keys(True):
         img_raw = td_next.get(("next","_extra","sim_output"))[0]  # same content
 
-    # 4) Convert and visualize (assumes single-channel)
+    # Convert and visualize (assumes single-channel)
     img = img_t.detach().cpu().numpy()
     to_show = img[0] if img.ndim == 3 else img
     plt.imshow(to_show, origin="lower", vmin=0.0, vmax=9.0)
     plt.colorbar()
-    plt.savefig('simulated_best_output.png', dpi=150)
+    plt.savefig('./figures/simulated_best_output.png', dpi=150)
     plt.show()
     
 
-    # If you also want the reward:
+    # Get reward:
     reward = td_next.get(("next","reward")).item()
     print("reward at a_star:", reward)
     
+    # plot
     
-    
-    
-    
-    
-    
-    import matplotlib.pyplot as plt
-    import numpy as np
-
     def moving_avg(x, k=10):
         if len(x) < 2 or k <= 1:
             return np.asarray(x, dtype=float)
@@ -1009,7 +1005,7 @@ if __name__ == "__main__":
     plt.ylabel("Loss")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("ppo_losses.png", dpi=150)
+    plt.savefig("./figures/ppo_losses.png", dpi=150)
 
     # --- Reward per outer batch (collector iteration) ---
     plt.figure()
@@ -1020,5 +1016,5 @@ if __name__ == "__main__":
     plt.ylabel("Reward")
     #plt.legend()
     plt.tight_layout()
-    plt.savefig("ppo_batch_reward.png", dpi=150)
+    plt.savefig("./figures/ppo_batch_reward.png", dpi=150)
     plt.show()
