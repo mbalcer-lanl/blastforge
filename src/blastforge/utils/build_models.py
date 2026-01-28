@@ -38,9 +38,7 @@ import os
 
 
 from blastforge.utils.environment import make_env # SimEnv
-
 from blastforge.utils.config import PPOConfig
-
 from blastforge.models.models import tCNNsurrogate, hybrid2vectorCNN
 
 # ----------------------------
