@@ -56,4 +56,4 @@ class PPOConfig:
     
     # Model file paths
     emulator_filepath: str = "./src/blastforge/models/emulator/study012_modelState_epoch0100.hdf5"
-    value_pretrain_filepath: str = './data/value/reward_regular_run_opt_fix_lr5e-4/runs/study_001/study001_modelState_epoch0100.pth'
+    value_pretrain_filepath: str = './src/blastforge/models/value/value_NN.pth'
