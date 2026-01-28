@@ -1,10 +1,5 @@
 """
-run in blasforge environment with:
-python main.py
-
-conda activate bf_fork
-cdlanl
-cd blastforge/git/fork/blastforge-main/examples/pli_3layers_v2/
+run in blastforge environment with:
 python main.py
 
 Train a PPO policy (TorchRL) on a custom Gymnasium env that calls a
@@ -47,18 +42,12 @@ from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 
-from models import tCNNsurrogate, hybrid2vectorCNN
-from utils import mse_2d, load_model_and_optimizer_hdf5
-
 import matplotlib.pyplot as plt
 import os
 
 from blastforge.utils.environment import make_env # SimEnv
-
 from blastforge.utils.config import PPOConfig
-
 from blastforge.RL.ppo import train
-
 from blastforge.utils.build_models import make_sim_fn_from_ckpt, build_policy_network
 
 import multiprocessing as mp # do we need?
@@ -71,18 +60,16 @@ if __name__ == "__main__":
     mp.set_start_method("fork", force=True) # do we need?
     
     # Flag to run the training loop of the policy network
-    run_train = False
+    run_train = True
     
     # get default command line arguments
     cfg = PPOConfig()
     
     # absolute path to main blastforge directory
-    bf_dir = '/mnt/c/Users/349957/Documents/1Research/lanl/blastforge/git/fork/blastforge-main/'
+    bf_dir = 'path/to/blastforge-main/'
     
     # filepaths to models
-    # cfg.emulator_filepath = bf_dir+"./models/emulator/study012_modelState_epoch0100.hdf5"
     cfg.emulator_filepath = bf_dir+"src/blastforge/models/emulator/study012_modelState_epoch0100.hdf5"
-    # cfg.value_pretrain_filepath = bf_dir+'./models/value/reward_regular_run_opt_fix_lr5e-4/runs/study_001/study001_modelState_epoch0100.pth'
     cfg.value_pretrain_filepath = bf_dir+'src/blastforge/models/value/value_NN.pth'
     
     # create figures directory if it does not exist

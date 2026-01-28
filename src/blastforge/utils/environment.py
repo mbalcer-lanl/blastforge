@@ -31,11 +31,9 @@ from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 
-from models import tCNNsurrogate, hybrid2vectorCNN
-from utils import mse_2d, load_model_and_optimizer_hdf5
-
 import matplotlib.pyplot as plt
 import os
+
 
 
 
@@ -254,3 +252,46 @@ def make_env(sim_fn: Callable[[np.ndarray], float], cfg: PPOConfig) -> Transform
     )
     check_env_specs(env)  # sanity check
     return env
+
+
+# Immediate reward metric (-MSE) you want to maximize
+
+def mse_2d(y_true, y_pred, *, mask: Optional[np.ndarray] = None, nan_safe: bool = False) -> float:
+    """
+    Compute the Mean Squared Error (MSE) between two arrays of 2D field values.
+
+    Parameters
+    ----------
+    y_true, y_pred : array-like
+        Arrays with identical shape (e.g., (H, W) or (T, H, W)).
+    mask : np.ndarray, optional
+        Boolean array of the same shape as inputs. True values are INCLUDED in the MSE;
+        False values are ignored. If provided, NaNs at masked-in points are still handled
+        according to `nan_safe`.
+    nan_safe : bool, default False
+        If True, ignores NaNs using `np.nanmean`. If False, any NaN will propagate.
+
+    Returns
+    -------
+    float
+        The mean squared error over all included elements.
+    """
+    a = np.asarray(y_true, dtype=float)
+    b = np.asarray(y_pred, dtype=float)
+    if a.shape != b.shape:
+        raise ValueError(f"Shapes must match, got {a.shape} and {b.shape}")
+
+    diff2 = (a - b) ** 2
+
+    if mask is not None:
+        m = np.asarray(mask, dtype=bool)
+        if m.shape != a.shape:
+            raise ValueError(f"Mask shape must match inputs, got {m.shape} vs {a.shape}")
+        # Only keep masked-in elements
+        diff2 = diff2[m]
+
+    if nan_safe:
+        return float(np.nanmean(diff2))
+    else:
+        return float(np.mean(diff2))
+

@@ -31,9 +31,6 @@ from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
 from torchrl.objectives import ClipPPOLoss
 from torchrl.objectives.value import GAE
 
-from models import tCNNsurrogate, hybrid2vectorCNN
-from utils import mse_2d, load_model_and_optimizer_hdf5
-
 import matplotlib.pyplot as plt
 import os
 
@@ -45,13 +42,14 @@ from blastforge.utils.build_models import build_policy_network, build_value_netw
 import multiprocessing as mp # do we need?
 
 
+
 # ----------------------------
 # Training loop (PPO)
 # ----------------------------
 
 def train(cfg: PPOConfig):
     
-    sim_fn = make_sim_fn_from_ckpt(cfg.emulator_filepath, device="cpu")
+    sim_fn = make_sim_fn_from_ckpt(cfg.emulator_filepath, cfg, device="cpu")
     
     # --- metrics storage ---
     logs = {

@@ -8,6 +8,7 @@ description = "Deep Agent and RL for explosive device design."
 version = "0.0.0"
 authors = [
     {name = "Hickmann, Kyle", email = "hickmank@lanl.gov"},
+    {name = "Balcer, Matthew", email = "mbalcer@lanl.gov"},
 ]
 # NOTE: The PyTorch package through `conda` is `pytorch`, through
 # `pip` (and therefore `flit`) it is `torch`. Since `blastforge`
@@ -43,6 +44,9 @@ classifiers = ["Private :: Do Not Upload",
 
 [project.urls]
 Source = "https://github.com/lanl/blastforge"
+
+[tool.flit.module]
+name = "blastforge"
 
 [tool.ruff]
 line-length = 89
