@@ -36,7 +36,6 @@ import os
 
 
 
-
 class SimEnv(gym.Env):
     """
     A single-step bandit-like env:
@@ -55,12 +54,13 @@ class SimEnv(gym.Env):
         self,
         sim_fn,                              # callable: np.ndarray (D,) -> np.ndarray / torch.Tensor
         action_low, action_high,             # arrays for Box bounds
+        # x_curr,
         output_hw=(1120, 800),               # (H, W)
         channels=1,                          # set to 3 for RGB, etc.
         channels_first=True,                 # True: (C,H,W), False: (H,W,C)
         max_steps=200,
         target = None,
-        seed = 42
+        seed = 42,
         # reward_fn=None                       # callable: obs -> float
     ):
         super().__init__()
@@ -70,6 +70,12 @@ class SimEnv(gym.Env):
         self.channels_first = channels_first
         self.max_steps = max_steps
         self.step_count = 0
+        # self.x_curr = x_curr
+        
+
+        # optional: bounds for the *state* x (separate from delta bounds)
+        self.x_low = np.asarray(action_low, dtype=np.float32)
+        self.x_high = np.asarray(action_high, dtype=np.float32)
 
         # Spaces
         self.action_space = gym.spaces.Box(
@@ -77,7 +83,9 @@ class SimEnv(gym.Env):
             high=np.asarray(action_high, dtype=np.float32),
             dtype=np.float32
         )
-        self.y_dim = int(np.prod(self.action_space.shape))
+        self.x_dim = int(np.prod(self.action_space.shape))
+        self.x0 = np.zeros((self.x_dim,), dtype=np.float32)  # or pass in as arg
+        self.x_curr = None
         
         # Observation shapes
         img_shape = (self.C, self.H, self.W) if channels_first else (self.H, self.W, self.C)
@@ -90,9 +98,9 @@ class SimEnv(gym.Env):
             self.target = np.moveaxis(self.target, -1, 0)
         assert self.target.shape == img_shape, f"target shape {self.target.shape} != expected {img_shape}"
 
-        # Observation space is a Dict[y, h1, h2]
+        # Observation space is a Dict[x, h1, h2]
         self.observation_space = spaces.Dict({
-            "y":  spaces.Box(low=-np.inf, high=np.inf, shape=(self.y_dim,), dtype=np.float32),
+            "x":  spaces.Box(low=-np.inf, high=np.inf, shape=(self.x_dim,), dtype=np.float32),
             "h1": spaces.Box(low=-np.inf, high=np.inf, shape=img_shape, dtype=np.float32),
             "h2": spaces.Box(low=-np.inf, high=np.inf, shape=img_shape, dtype=np.float32),
         })
@@ -125,26 +133,41 @@ class SimEnv(gym.Env):
     
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None) -> Tuple[np.ndarray, dict]:
         print('Resetting environment ...')
+        ## if seed is not None:
+        ##     self.np_random, _ = gym.utils.seeding.np_random(seed)
+        ## self.step_count = 0
+        ## # At t=0 the policy will see (y=0, h1=0 image, h2=target)
+        ## y0  = np.zeros((self.x_dim,), dtype=np.float32)
+        ## h10 = np.zeros((self.C, self.H, self.W), dtype=np.float32)
+        ## obs = {"y": y0, "h1": h10, "h2": self.target.copy()}
+        ## info = {}
+        ## return obs, info
         if seed is not None:
             self.np_random, _ = gym.utils.seeding.np_random(seed)
         self.step_count = 0
-        # At t=0 the policy will see (y=0, h1=0 image, h2=target)
-        y0  = np.zeros((self.y_dim,), dtype=np.float32)
-        h10 = np.zeros((self.C, self.H, self.W), dtype=np.float32)
-        obs = {"y": y0, "h1": h10, "h2": self.target.copy()}
-        info = {}
-        return obs, info
-    
-    def evaluate(self, action: np.ndarray):
+
+        self.x_curr = self.x0.copy()  # current input variables
+
+        sim_out = self.sim_fn(self.x_curr)          # if sim_fn takes only x
+        img = self._coerce_img(sim_out)
+
+        obs = {
+            "x":  self.x_curr.astype(np.float32, copy=False).reshape(self.x_dim),
+            "h1": img,                 # or zeros if you prefer
+            "h2": self.target.copy(),
+        }
+        return obs, {}
+
+    def evaluate(self, action: np.ndarray, x_curr: np.ndarray):
         print('Conducting environment step ...')
         self.step_count += 1
 
         # Enforce bounds to be safe, even though the policy is bounded.
-        action = np.asarray(action, dtype=np.float32)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+        action = np.asarray(action, dtype=np.float32)#  + np.asarray(x_curr, dtype=np.float32)
+        # action = np.clip(action, self.action_space.low, self.action_space.high)
 
         # 1) Run the simulator/model → image-like output (no scalar cast!)
-        sim_out = self.sim_fn(action)              # model → image
+        sim_out = self.sim_fn(action, x_curr)              # model → image
         img = self._coerce_img(sim_out)            # (C,H,W) float32
         return img
 
@@ -152,65 +175,42 @@ class SimEnv(gym.Env):
         print('Conducting environment step ...')
         self.step_count += 1
 
-        # Enforce bounds to be safe, even though the policy is bounded.
-        action = np.asarray(action, dtype=np.float32)
-        action = np.clip(action, self.action_space.low, self.action_space.high)
+        delta = np.asarray(action, dtype=np.float32)
+        # (optional) clip delta to action_space
+        delta = np.clip(delta, self.action_space.low, self.action_space.high)
 
-        # 1) Run the simulator/model → image-like output (no scalar cast!)
-        sim_out = self.sim_fn(action)              # model → image
-        img = self._coerce_img(sim_out)            # (C,H,W) float32
-        
-        ## fig, ax = plt.subplots()
-        ## im = ax.imshow(sim_out[0,:,:], origin="lower", extent=None)  # default colormap
-        ## cbar = fig.colorbar(im, ax=ax)
-        ## cbar.set_label("Value")
-        ## plt.show()
-        
-        # Normalize to a numpy array and check finiteness
-        if torch.is_tensor(sim_out):
-            finite = torch.isfinite(sim_out).all().item()
-            sim_out = sim_out.detach().cpu().numpy().astype(np.float32, copy=False)
-        else:
-            sim_out = np.asarray(sim_out, dtype=np.float32)
-            finite = np.isfinite(sim_out).all()
+        x_prev = self.x_curr
+        x_next = x_prev + delta
 
-        if not finite:
-            # Optional: count what's wrong for easier debugging
-            n_nan = int(np.isnan(sim_out).sum())
-            n_inf = int(np.isinf(sim_out).sum())
-            raise RuntimeError(
-                f"sim_fn returned non-finite values (nan={n_nan}, inf={n_inf}) "
-                f"for action {action}"
-            )
+        # (optional) clip absolute x to physical bounds
+        x_next = np.clip(x_next, self.x_low, self.x_high)
 
-        # 2) Convert to an observation that matches observation_space
+        # run simulator
+        # Option A: sim_fn takes only x
+        sim_out = self.sim_fn(x_next)
+
+        # Option B: keep your sim_fn(action, x_curr) meaning sim_fn(x_next, x_prev)
+        # sim_out = self.sim_fn(x_next, x_prev)
+
+        img = self._coerce_img(sim_out)
+
+        # reward
+        reward = -1.0 * mse_2d(self.target[0, :, :], img[0, :, :])
+
+        # update state
+        self.x_curr = x_next
+
         obs = {
-            "y":  action.astype(np.float32, copy=False).reshape(self.y_dim),
+            "x":  x_next.astype(np.float32, copy=False).reshape(self.x_dim),
             "h1": img,
             "h2": self.target.copy(),
         }
-        # print('obs.ndim =', obs.ndim)
-        # print('obs.shape =', obs.shape) # (1, 1120, 800)
-        
-        self._last_sim_out = sim_out
-        
-        ## reward = sim_out
-        
-        reward = -1*mse_2d(self.target[0,:,:], img[0,:,:])
-        print('reward =', reward)
-        # Single-step termination by default (bandit); change if you want longer episodes
-        ## terminated = True if self.step_count >= self.max_steps else False
-        ## truncated = False
-        
+
         terminated = False
-        truncated = self.step_count >= self.max_steps  # time-limit
+        truncated = self.step_count >= self.max_steps
 
-
-        # Observation can remain a dummy vector; you can put diagnostics here if you like.
-        ## obs = np.zeros(self.observation_space.shape, dtype=np.float32)
-        info = {"sim_output": sim_out}
-
-        return obs, reward, terminated, truncated, info
+        info = {"x_prev": x_prev, "x_next": x_next, "sim_output": sim_out}
+        return obs, float(reward), terminated, truncated, info
 
     def render(self):
         # No rendering; place holder if you want to visualize.
@@ -294,4 +294,5 @@ def mse_2d(y_true, y_pred, *, mask: Optional[np.ndarray] = None, nan_safe: bool 
         return float(np.nanmean(diff2))
     else:
         return float(np.mean(diff2))
+
 
