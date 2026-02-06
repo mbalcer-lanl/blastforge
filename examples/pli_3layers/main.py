@@ -33,22 +33,13 @@ from torchrl.envs.utils import (
     check_env_specs,
 )
 
-from torchrl.collectors import SyncDataCollector
-from torchrl.data.replay_buffers import ReplayBuffer
-from torchrl.data.replay_buffers.storages import LazyTensorStorage
-from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
-
-from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
-from torchrl.objectives import ClipPPOLoss
-from torchrl.objectives.value import GAE
-
 import matplotlib.pyplot as plt
 import os
 
 from blastforge.utils.environment import make_env # SimEnv
 from blastforge.utils.config import PPOConfig
 from blastforge.RL.ppo import train
-from blastforge.utils.build_models import make_sim_fn_from_ckpt, build_policy_network
+from blastforge.utils.build_models import build_policy_network_gaussian_cnn, make_sim_fn_from_ckpt
 
 import multiprocessing as mp # do we need?
 
@@ -60,17 +51,18 @@ if __name__ == "__main__":
     mp.set_start_method("fork", force=True) # do we need?
     
     # Flag to run the training loop of the policy network
-    run_train = True
+    run_train = False
     
     # get default command line arguments
     cfg = PPOConfig()
     
     # absolute path to main blastforge directory
-    bf_dir = 'path/to/blastforge-main/'
+    bf_dir = '/mnt/c/Users/349957/Documents/1Research/lanl/blastforge/git/fork/pretrained_action_NN/blastforge/'
     
     # filepaths to models
     cfg.emulator_filepath = bf_dir+"src/blastforge/models/emulator/study012_modelState_epoch0100.hdf5"
     cfg.value_pretrain_filepath = bf_dir+'src/blastforge/models/value/value_NN.pth'
+    cfg.policy_pretrain_filepath = bf_dir+'src/blastforge/models/policy/study001_modelState_epoch0080.pth'
     
     # create figures directory if it does not exist
     os.makedirs('./figures/', exist_ok=True)
@@ -139,7 +131,7 @@ if __name__ == "__main__":
     cfg.target[500:700, 399-20:399+20] = 8.93
     
     # plot target if requested
-    plt_target = True
+    plt_target = False
     if plt_target:
         fig, ax = plt.subplots()
         im = ax.imshow(cfg.target, origin="lower", vmin=0.0, vmax=9.0)  # default colormap
@@ -156,10 +148,10 @@ if __name__ == "__main__":
     cfg.gamma = 0.99
     cfg.gae_lambda = 0.95
     
-    cfg.total_frames = 64
-    cfg.frames_per_batch = 16
-    cfg.minibatch_size = 4 # total_frames = frames_per_batch*minibatch_size
-    cfg.ppo_epochs = 5
+    cfg.total_frames = 4 # 64
+    cfg.frames_per_batch = 2 # 16
+    cfg.minibatch_size = 2 # 4 # total_frames = frames_per_batch*minibatch_size
+    cfg.ppo_epochs = 1 # 5
     cfg.max_grad_norm = 1.0
     cfg.eval_every_n_batches = 1
     cfg.max_steps = 1
@@ -180,17 +172,17 @@ if __name__ == "__main__":
     
     # Rebuild env and actor exactly as in training
     env = make_env(sim_fn, cfg)                       # your factory
-    actor = build_policy_network(env, cfg)
+    policy = build_policy_network_gaussian_cnn(env, cfg)
 
     # Load weights
     state = torch.load(cfg.save_path, map_location=cfg.device)
-    actor.load_state_dict(state)
-    actor.to(cfg.device).eval()
+    policy.load_state_dict(state)
+    policy.to(cfg.device).eval()
 
     # Deterministic single-step rollout (works for bandit: max_steps=1)
     with torch.no_grad(), set_exploration_type(ExplorationType.DETERMINISTIC):
         td = env.rollout(
-            policy=actor,
+            policy=policy,
             max_steps=cfg.max_steps,      # 1 for your bandit; >1 if episodic
             auto_reset=True,
             auto_cast_to_device=True,
@@ -268,6 +260,12 @@ if __name__ == "__main__":
     #x = np.arange(len(ma)) + (len(logs["eval_return"]) - len(ma))
     plt.title("Reward of predicted action per batch")
     plt.xlabel("Outer batch index")
+    plt.ylabel("Reward")
+    #plt.legend()
+    plt.tight_layout()
+    plt.savefig("./figures/ppo_batch_reward.png", dpi=150)
+    plt.show()
+
     plt.ylabel("Reward")
     #plt.legend()
     plt.tight_layout()
