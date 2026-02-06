@@ -36,8 +36,7 @@ import os
 
 from blastforge.utils.environment import make_env # SimEnv
 from blastforge.utils.config import PPOConfig
-from blastforge.utils.build_models import make_sim_fn_from_ckpt
-from blastforge.utils.build_models import build_policy_network, build_value_network
+from blastforge.utils.build_models import build_policy_network, build_value_network, build_policy_network_gaussian_cnn, make_sim_fn_from_ckpt
 
 import multiprocessing as mp # do we need?
 
@@ -49,6 +48,7 @@ import multiprocessing as mp # do we need?
 
 def train(cfg: PPOConfig):
     
+    # initialize current state
     sim_fn = make_sim_fn_from_ckpt(cfg.emulator_filepath, cfg, device="cpu")
     
     # --- metrics storage ---
@@ -70,7 +70,8 @@ def train(cfg: PPOConfig):
     device = torch.device(cfg.device)
     env = make_env(sim_fn, cfg)
 
-    actor = build_policy_network(env, cfg)
+    # actor = build_policy_network(env, cfg)
+    actor = build_policy_network_gaussian_cnn(env, cfg)
     value = build_value_network(env, cfg)
 
     # Collector: batches trajectories on-policy
@@ -209,8 +210,6 @@ def train(cfg: PPOConfig):
                         logs["eval_return"].append(ret)
                         print(f"  [eval] deterministic action (first 5): {best_action[:5]!r} | return: {ret:+.5f}")
                         actor.train()
-                        
-                        
                         
                         
                         # 1) Reset and set the action
