@@ -48,6 +48,7 @@ class PPOConfig:
     max_grad_norm: float = 1.0
 
     # Saving/eval
+    data_path: str = "./"
     save_path: str = "ppo_sim_actor.pt"
     eval_every_n_batches: int = 10
     
@@ -56,4 +57,7 @@ class PPOConfig:
     
     # Model file paths
     emulator_filepath: str = "./src/blastforge/models/emulator/study012_modelState_epoch0100.hdf5"
+    policy_pretrain_filepath: str = './src/blastforge/models/policy/study001_modelState_epoch0080.pth'
     value_pretrain_filepath: str = './src/blastforge/models/value/value_NN.pth'
+    
+    norm_file: str = './src/blastforge/models/policy/lsc240420_Bspline_norms.npz'

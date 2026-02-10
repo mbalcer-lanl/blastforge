@@ -241,7 +241,7 @@ def train(cfg: PPOConfig):
                         cbar = fig.colorbar(im, ax=ax)
                         cbar.set_label("Density")
                         plt.tight_layout()
-                        plt.savefig('./figures/simulated_best_output_batch{0}.png'.format(batches), dpi=150, transparent=True)
+                        plt.savefig(cfg.fig_path+'simulated_best_output_batch{0}.png'.format(batches), dpi=150, transparent=True)
                         
                         # plt.show()
                 finally:
@@ -261,12 +261,12 @@ def train(cfg: PPOConfig):
             pass
         
     # Save trained actor weights
-    save_path_i = "ppo_sim_actor_batch{0}.pt".format(batches)
+    save_path_i = cfg.data_path+"ppo_sim_actor_batch{0}.pt".format(batches)
     torch.save(actor.state_dict(), save_path_i)
     print(f"Saved actor to: {save_path_i}")
     
     # save log file for current batch
-    np.savez("training_logs.npz", **logs)
+    np.savez(cfg.data_path+"training_logs.npz", **logs)
     
     # Save trained actor weights
     torch.save(actor.state_dict(), cfg.save_path)

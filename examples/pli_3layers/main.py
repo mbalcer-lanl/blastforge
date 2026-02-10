@@ -2,6 +2,10 @@
 run in blastforge environment with:
 python main.py
 
+cd /mnt/c/Users/349957/Documents/1Research/lanl/blastforge/git/fork/pretrained_action_NN/blastforge/examples/pli_3layers
+conda activate bf_fork
+python main.py
+
 Train a PPO policy (TorchRL) on a custom Gymnasium env that calls a
 user-provided emulator of a PLI density field of copper at t=25\mu s 
 with 28 inputs and returns a single scalar.
@@ -33,13 +37,22 @@ from torchrl.envs.utils import (
     check_env_specs,
 )
 
+from torchrl.collectors import SyncDataCollector
+from torchrl.data.replay_buffers import ReplayBuffer
+from torchrl.data.replay_buffers.storages import LazyTensorStorage
+from torchrl.data.replay_buffers.samplers import SamplerWithoutReplacement
+
+from torchrl.modules import ProbabilisticActor, TanhNormal, ValueOperator
+from torchrl.objectives import ClipPPOLoss
+from torchrl.objectives.value import GAE
+
 import matplotlib.pyplot as plt
 import os
 
 from blastforge.utils.environment import make_env # SimEnv
-from blastforge.utils.config import PPOConfig
+from blastforge.utils.config_ch import PPOConfig
 from blastforge.RL.ppo import train
-from blastforge.utils.build_models import build_policy_network_gaussian_cnn, make_sim_fn_from_ckpt
+from blastforge.utils.build_models import make_sim_fn_from_ckpt, build_policy_network_gaussian_cnn
 
 import multiprocessing as mp # do we need?
 
@@ -51,21 +64,22 @@ if __name__ == "__main__":
     mp.set_start_method("fork", force=True) # do we need?
     
     # Flag to run the training loop of the policy network
-    run_train = False
+    run_train = True
     
     # get default command line arguments
     cfg = PPOConfig()
     
     # absolute path to main blastforge directory
-    bf_dir = '/mnt/c/Users/349957/Documents/1Research/lanl/blastforge/git/fork/pretrained_action_NN/blastforge/'
+    bf_dir = '/users/mbalcer/blastforge/pretrain_policy/blastforge/'
     
     # filepaths to models
     cfg.emulator_filepath = bf_dir+"src/blastforge/models/emulator/study012_modelState_epoch0100.hdf5"
     cfg.value_pretrain_filepath = bf_dir+'src/blastforge/models/value/value_NN.pth'
     cfg.policy_pretrain_filepath = bf_dir+'src/blastforge/models/policy/study001_modelState_epoch0080.pth'
     
-    # create figures directory if it does not exist
-    os.makedirs('./figures/', exist_ok=True)
+    cfg.norm_file = bf_dir+'src/blastforge/models/policy/lsc240420_Bspline_norms.npz'
+    
+
     
     
     # define bounds of geometric parameters
@@ -130,15 +144,6 @@ if __name__ == "__main__":
     cfg.target = np.zeros((1120, 800))
     cfg.target[500:700, 399-20:399+20] = 8.93
     
-    # plot target if requested
-    plt_target = False
-    if plt_target:
-        fig, ax = plt.subplots()
-        im = ax.imshow(cfg.target, origin="lower", vmin=0.0, vmax=9.0)  # default colormap
-        cbar = fig.colorbar(im, ax=ax)
-        cbar.set_label("Density")
-        plt.savefig('./figures/target.png', dpi=150, transparent=True)
-        plt.show()
     
     cfg.nvar = len(cfg.action_low)
     
@@ -148,15 +153,33 @@ if __name__ == "__main__":
     cfg.gamma = 0.99
     cfg.gae_lambda = 0.95
     
-    cfg.total_frames = 4 # 64
-    cfg.frames_per_batch = 2 # 16
-    cfg.minibatch_size = 2 # 4 # total_frames = frames_per_batch*minibatch_size
-    cfg.ppo_epochs = 1 # 5
+    cfg.total_frames = 256
+    cfg.frames_per_batch = 16
+    cfg.minibatch_size = int(cfg.total_frames/cfg.frames_per_batch) # total_frames = frames_per_batch*minibatch_size
+    cfg.ppo_epochs = 5
     cfg.max_grad_norm = 1.0
     cfg.eval_every_n_batches = 1
     cfg.max_steps = 1
+
+    case_name = '{0}_{1}'.format(cfg.total_frames,cfg.frames_per_batch)
     
+    cfg.data_path = './'+case_name+'/data/'
+    cfg.fig_path = './'+case_name+'/figures/'
+    cfg.save_path = './'+case_name+'/data/ppo_sim_actor.pt'
+    # create data and figures directory if it does not exist
+    os.makedirs(cfg.fig_path, exist_ok=True)
+    os.makedirs(cfg.save_path, exist_ok=True)
     
+    # plot target if requested
+    plt_target = True
+    if plt_target:
+        fig, ax = plt.subplots()
+        im = ax.imshow(cfg.target, origin="lower", vmin=0.0, vmax=9.0)  # default colormap
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label("Density")
+        plt.savefig(cfg.fig_path+'target.png', dpi=150, transparent=True)
+        plt.show()
+
     # run training loop (PPO)
     if run_train:
         logs = train(cfg)
@@ -172,17 +195,17 @@ if __name__ == "__main__":
     
     # Rebuild env and actor exactly as in training
     env = make_env(sim_fn, cfg)                       # your factory
-    policy = build_policy_network_gaussian_cnn(env, cfg)
+    actor = build_policy_network_gaussian_cnn(env, cfg)
 
     # Load weights
     state = torch.load(cfg.save_path, map_location=cfg.device)
-    policy.load_state_dict(state)
-    policy.to(cfg.device).eval()
+    actor.load_state_dict(state)
+    actor.to(cfg.device).eval()
 
     # Deterministic single-step rollout (works for bandit: max_steps=1)
     with torch.no_grad(), set_exploration_type(ExplorationType.DETERMINISTIC):
         td = env.rollout(
-            policy=policy,
+            policy=actor,
             max_steps=cfg.max_steps,      # 1 for your bandit; >1 if episodic
             auto_reset=True,
             auto_cast_to_device=True,
@@ -224,7 +247,7 @@ if __name__ == "__main__":
     to_show = img[0] if img.ndim == 3 else img
     plt.imshow(to_show, origin="lower", vmin=0.0, vmax=9.0)
     plt.colorbar()
-    plt.savefig('./figures/simulated_best_output.png', dpi=150)
+    plt.savefig(cfg.fig_path+'simulated_best_output.png', dpi=150)
     plt.show()
     
 
@@ -252,7 +275,7 @@ if __name__ == "__main__":
     plt.ylabel("Loss")
     plt.legend()
     plt.tight_layout()
-    plt.savefig("./figures/ppo_losses.png", dpi=150)
+    plt.savefig(cfg.fig_path+"ppo_losses.png", dpi=150)
 
     # --- Reward per outer batch (collector iteration) ---
     plt.figure()
@@ -263,11 +286,5 @@ if __name__ == "__main__":
     plt.ylabel("Reward")
     #plt.legend()
     plt.tight_layout()
-    plt.savefig("./figures/ppo_batch_reward.png", dpi=150)
-    plt.show()
-
-    plt.ylabel("Reward")
-    #plt.legend()
-    plt.tight_layout()
-    plt.savefig("./figures/ppo_batch_reward.png", dpi=150)
+    plt.savefig(cfg.fig_path+"ppo_batch_reward.png", dpi=150)
     plt.show()

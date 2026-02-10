@@ -172,10 +172,11 @@ def build_policy_network_gaussian_cnn(env, cfg, *, cnn_kwargs=None):
 
     class MVNToLocScale(nn.Module):
         """Wrap gaussian_Image2VectorCNN to output loc/scale suitable for TanhNormal."""
-        def __init__(self, mvn_net: nn.Module, min_scale: float = 1e-6):
+        def __init__(self, mvn_net: nn.Module, norm_file: str, min_scale: float = 1e-6):
             super().__init__()
             self.mvn_net = mvn_net
             self.min_scale = float(min_scale)
+            self.norm_file = norm_file
 
         def forward(self, h1: torch.Tensor):
             # mvn_net returns torch.distributions.MultivariateNormal
@@ -186,10 +187,19 @@ def build_policy_network_gaussian_cnn(env, cfg, *, cnn_kwargs=None):
             cov = dist.covariance_matrix  # (N, action_dim, action_dim)
             var = cov.diagonal(dim1=-2, dim2=-1)  # (N, action_dim)
             scale = torch.sqrt(torch.clamp(var, min=self.min_scale))  # (N, action_dim)
+            
+            # rescale delta x in unscaled space
+            norm_args = np.load(self.norm_file)
+            Bspline_min = norm_args['Bspline_min']
+            Bspline_max = norm_args['Bspline_max']
+            Bspline_rng = Bspline_max - Bspline_min
 
-            return loc, scale
+            Bspline_rng_t = torch.as_tensor(Bspline_rng, device=loc.device, dtype=loc.dtype)
+            loc_unscaled = loc * (Bspline_rng_t / 2.0)
 
-    policy_head = MVNToLocScale(backbone)
+            return loc_unscaled, scale
+
+    policy_head = MVNToLocScale(mvn_net=backbone,norm_file=cfg.norm_file)
 
     policy_param_module = TensorDictModule(
         module=policy_head,
